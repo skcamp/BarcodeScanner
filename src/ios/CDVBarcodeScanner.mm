@@ -12,10 +12,6 @@
 #import <AssetsLibrary/AssetsLibrary.h>
 #import <AudioToolbox/AudioToolbox.h>
 
-//------------------------------------------------------------------------------
-// use the all-in-one version of zxing that we built
-//------------------------------------------------------------------------------
-#import "zxing-all-in-one.h"
 #import <Cordova/CDVPlugin.h>
 
 
@@ -61,7 +57,7 @@
 //------------------------------------------------------------------------------
 // class that does the grunt work
 //------------------------------------------------------------------------------
-@interface CDVbcsProcessor : NSObject <AVCaptureVideoDataOutputSampleBufferDelegate> {}
+@interface CDVbcsProcessor : NSObject <AVCaptureMetadataOutputObjectsDelegate> {}
 @property (nonatomic, retain) CDVBarcodeScanner*           plugin;
 @property (nonatomic, retain) NSString*                   callback;
 @property (nonatomic, retain) UIViewController*           parentViewController;
@@ -83,12 +79,8 @@
 - (void)barcodeScanCancelled;
 - (void)openDialog;
 - (NSString*)setUpCaptureSession;
-- (void)captureOutput:(AVCaptureOutput*)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection*)connection;
-- (NSString*)formatStringFrom:(zxing::BarcodeFormat)format;
-- (UIImage*)getImageFromSample:(CMSampleBufferRef)sampleBuffer;
-- (zxing::Ref<zxing::LuminanceSource>) getLuminanceSourceFromSample:(CMSampleBufferRef)sampleBuffer imageBytes:(uint8_t**)ptr;
-- (UIImage*) getImageFromLuminanceSource:(zxing::LuminanceSource*)luminanceSource;
-- (void)dumpImage:(UIImage*)image;
+- (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputMetadataObjects:(NSArray *)metadataObjects fromConnection:(AVCaptureConnection *)connection;
+
 @end
 
 //------------------------------------------------------------------------------
@@ -400,28 +392,15 @@ parentViewController:(UIViewController*)parentViewController
         if (!device) return @"unable to obtain video capture device";
         
     }
+
     
-    
+    //
+    // Input
+    //    
+
     AVCaptureDeviceInput* input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
     if (!input) return @"unable to obtain video capture device input";
-    
-    AVCaptureVideoDataOutput* output = [[AVCaptureVideoDataOutput alloc] init];
-    if (!output) return @"unable to obtain video capture output";
-    
-    NSDictionary* videoOutputSettings = [NSDictionary
-                                         dictionaryWithObject:[NSNumber numberWithInt:kCVPixelFormatType_32BGRA]
-                                         forKey:(id)kCVPixelBufferPixelFormatTypeKey
-                                         ];
-    
-    output.alwaysDiscardsLateVideoFrames = YES;
-    output.videoSettings = videoOutputSettings;
-    
-    [output setSampleBufferDelegate:self queue:dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0)];
-    
-    if (![captureSession canSetSessionPreset:AVCaptureSessionPresetMedium]) {
-        return @"unable to preset medium quality video capture";
-    }
-    
+
     captureSession.sessionPreset = AVCaptureSessionPresetMedium;
     
     if ([captureSession canAddInput:input]) {
@@ -430,14 +409,40 @@ parentViewController:(UIViewController*)parentViewController
     else {
         return @"unable to add video capture device input to session";
     }
-    
+     
+    //
+    // Output
+    //    
+
+    AVCaptureMetadataOutput* output = [[AVCaptureMetadataOutput alloc] init];
+    if (!output) return @"unable to obtain metadata capture output";
+
+    //add the output to the session before setting metadataobject types.
     if ([captureSession canAddOutput:output]) {
         [captureSession addOutput:output];
     }
     else {
         return @"unable to add video capture output to session";
     }
-    
+
+    [output setMetadataObjectsDelegate:self queue:dispatch_get_main_queue()];
+    output.metadataObjectTypes = @[
+        AVMetadataObjectTypeCode128Code,
+        AVMetadataObjectTypeUPCECode,
+        AVMetadataObjectTypeCode39Code,
+        AVMetadataObjectTypeEAN13Code,
+        AVMetadataObjectTypeEAN8Code,
+        AVMetadataObjectTypeCode93Code,
+        AVMetadataObjectTypeCode128Code,
+        AVMetadataObjectTypeQRCode,
+        AVMetadataObjectTypeITF14Code,
+        AVMetadataObjectTypeDataMatrixCode
+    ];
+
+    if (![captureSession canSetSessionPreset:AVCaptureSessionPresetMedium]) {
+        return @"unable to preset medium quality video capture";
+    }
+  
     // setup capture preview layer
     self.previewLayer = [AVCaptureVideoPreviewLayer layerWithSession:captureSession];
     
@@ -447,248 +452,38 @@ parentViewController:(UIViewController*)parentViewController
     return nil;
 }
 
-//--------------------------------------------------------------------------
-// this method gets sent the captured frames
-//--------------------------------------------------------------------------
-- (void)captureOutput:(AVCaptureOutput*)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection*)connection {
-    
-    if (!self.capturing) return;
-    
-#if USE_SHUTTER
-    if (!self.viewController.shutterPressed) return;
-    self.viewController.shutterPressed = NO;
-    
-    UIView* flashView = [[UIView alloc] initWithFrame:self.viewController.view.frame];
-    [flashView setBackgroundColor:[UIColor whiteColor]];
-    [self.viewController.view.window addSubview:flashView];
-    
-    [UIView
-     animateWithDuration:.4f
-     animations:^{
-         [flashView setAlpha:0.f];
-     }
-     completion:^(BOOL finished){
-         [flashView removeFromSuperview];
-     }
-     ];
-    
-    //         [self dumpImage: [[self getImageFromSample:sampleBuffer] autorelease]];
-#endif
-    
-    
-    using namespace zxing;
-    
-    // LuminanceSource is pretty dumb; we have to give it a pointer to
-    // a byte array, but then can't get it back out again.  We need to
-    // get it back to free it.  Saving it in imageBytes.
-    uint8_t* imageBytes;
-    
-    //        NSTimeInterval timeStart = [NSDate timeIntervalSinceReferenceDate];
-    
-    try {
-        DecodeHints decodeHints;
-        decodeHints.addFormat(BarcodeFormat_QR_CODE);
-        decodeHints.addFormat(BarcodeFormat_DATA_MATRIX);
-        decodeHints.addFormat(BarcodeFormat_UPC_E);
-        decodeHints.addFormat(BarcodeFormat_UPC_A);
-        decodeHints.addFormat(BarcodeFormat_EAN_8);
-        decodeHints.addFormat(BarcodeFormat_EAN_13);
-        decodeHints.addFormat(BarcodeFormat_CODE_128);
-        decodeHints.addFormat(BarcodeFormat_CODE_39);
-        decodeHints.addFormat(BarcodeFormat_ITF);
-        
-        // here's the meat of the decode process
-        Ref<LuminanceSource>   luminanceSource   ([self getLuminanceSourceFromSample: sampleBuffer imageBytes:&imageBytes]);
-        //            [self dumpImage: [[self getImageFromLuminanceSource:luminanceSource] autorelease]];
-        Ref<Binarizer>         binarizer         (new HybridBinarizer(luminanceSource));
-        Ref<BinaryBitmap>      bitmap            (new BinaryBitmap(binarizer));
-        Ref<MultiFormatReader> reader            (new MultiFormatReader());
-        Ref<Result>            result            (reader->decode(bitmap, decodeHints));
-        Ref<String>            resultText        (result->getText());
-        BarcodeFormat          formatVal =       result->getBarcodeFormat();
-        NSString*              format    =       [self formatStringFrom:formatVal];
-        
-        
-        const char* cString      = resultText->getText().c_str();
-        NSString*   resultString = [[NSString alloc] initWithCString:cString encoding:NSUTF8StringEncoding];
-        
+#pragma mark - AVCapturedataOutputObjectsDelegate
+
+- (void)captureOutput:(AVCaptureOutput *)captureOutput
+didOutputMetadataObjects:(NSArray *)metadataObjects
+       fromConnection:(AVCaptureConnection *)connection
+{
+    NSString *resultString = nil;
+    for (AVMetadataObject *metadata in metadataObjects) {
+        resultString = [(AVMetadataMachineReadableCodeObject *)metadata stringValue];
+        NSString* format = [self formatStringFrom:metadata.type];
         [self barcodeScanSucceeded:resultString format:format];
-        
-    }
-    catch (zxing::ReaderException &rex) {
-        //            NSString *message = [[[NSString alloc] initWithCString:rex.what() encoding:NSUTF8StringEncoding] autorelease];
-        //            NSLog(@"decoding: ReaderException: %@", message);
-    }
-    catch (zxing::IllegalArgumentException &iex) {
-        //            NSString *message = [[[NSString alloc] initWithCString:iex.what() encoding:NSUTF8StringEncoding] autorelease];
-        //            NSLog(@"decoding: IllegalArgumentException: %@", message);
-    }
-    catch (...) {
-        //            NSLog(@"decoding: unknown exception");
-        //            [self barcodeScanFailed:@"unknown exception decoding barcode"];
-    }
-    
-    //        NSTimeInterval timeElapsed  = [NSDate timeIntervalSinceReferenceDate] - timeStart;
-    //        NSLog(@"decoding completed in %dms", (int) (timeElapsed * 1000));
-    
-    // free the buffer behind the LuminanceSource
-    if (imageBytes) {
-        free(imageBytes);
     }
 }
 
 //--------------------------------------------------------------------------
 // convert barcode format to string
 //--------------------------------------------------------------------------
-- (NSString*)formatStringFrom:(zxing::BarcodeFormat)format {
-    if (format == zxing::BarcodeFormat_QR_CODE)      return @"QR_CODE";
-    if (format == zxing::BarcodeFormat_DATA_MATRIX)  return @"DATA_MATRIX";
-    if (format == zxing::BarcodeFormat_UPC_E)        return @"UPC_E";
-    if (format == zxing::BarcodeFormat_UPC_A)        return @"UPC_A";
-    if (format == zxing::BarcodeFormat_EAN_8)        return @"EAN_8";
-    if (format == zxing::BarcodeFormat_EAN_13)       return @"EAN_13";
-    if (format == zxing::BarcodeFormat_CODE_128)     return @"CODE_128";
-    if (format == zxing::BarcodeFormat_CODE_39)      return @"CODE_39";
-    if (format == zxing::BarcodeFormat_ITF)          return @"ITF";
-    return @"???";
-}
-
-//--------------------------------------------------------------------------
-// convert capture's sample buffer (scanned picture) into the thing that
-// zxing needs.
-//--------------------------------------------------------------------------
-- (zxing::Ref<zxing::LuminanceSource>) getLuminanceSourceFromSample:(CMSampleBufferRef)sampleBuffer imageBytes:(uint8_t**)ptr {
-    CVImageBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
-    CVPixelBufferLockBaseAddress(imageBuffer, 0);
-    
-    size_t   bytesPerRow =            CVPixelBufferGetBytesPerRow(imageBuffer);
-    size_t   width       =            CVPixelBufferGetWidth(imageBuffer);
-    size_t   height      =            CVPixelBufferGetHeight(imageBuffer);
-    uint8_t* baseAddress = (uint8_t*) CVPixelBufferGetBaseAddress(imageBuffer);
-    
-    // only going to get 90% of the min(width,height) of the captured image
-    size_t    greyWidth  = 9 * MIN(width, height) / 10;
-    uint8_t*  greyData   = (uint8_t*) malloc(greyWidth * greyWidth);
-    
-    // remember this pointer so we can free it later
-    *ptr = greyData;
-    
-    if (!greyData) {
-        CVPixelBufferUnlockBaseAddress(imageBuffer,0);
-        throw new zxing::ReaderException("out of memory");
-    }
-    
-    size_t offsetX = (width  - greyWidth) / 2;
-    size_t offsetY = (height - greyWidth) / 2;
-    
-    // pixel-by-pixel ...
-    for (size_t i=0; i<greyWidth; i++) {
-        for (size_t j=0; j<greyWidth; j++) {
-            // i,j are the coordinates from the sample buffer
-            // ni, nj are the coordinates in the LuminanceSource
-            // in this case, there's a rotation taking place
-            size_t ni = greyWidth-j;
-            size_t nj = i;
-            
-            size_t baseOffset = (j+offsetY)*bytesPerRow + (i + offsetX)*4;
-            
-            // convert from color to grayscale
-            // http://en.wikipedia.org/wiki/Grayscale#Converting_color_to_grayscale
-            size_t value = 0.11 * baseAddress[baseOffset] +
-            0.59 * baseAddress[baseOffset + 1] +
-            0.30 * baseAddress[baseOffset + 2];
-            
-            greyData[nj*greyWidth + ni] = value;
-        }
-    }
-    
-    CVPixelBufferUnlockBaseAddress(imageBuffer,0);
-    
-    using namespace zxing;
-    
-    Ref<LuminanceSource> luminanceSource (
-                                          new GreyscaleLuminanceSource(greyData, (int)greyWidth, (int)greyWidth, 0, 0, (int)greyWidth, (int)greyWidth)
-                                          );
-    
-    return luminanceSource;
-}
-
-//--------------------------------------------------------------------------
-// for debugging
-//--------------------------------------------------------------------------
-- (UIImage*) getImageFromLuminanceSource:(zxing::LuminanceSource*)luminanceSource  {
-    unsigned char* bytes = luminanceSource->getMatrix();
-    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceGray();
-    CGContextRef context = CGBitmapContextCreate(
-                                                 bytes,
-                                                 luminanceSource->getWidth(), luminanceSource->getHeight(), 8, luminanceSource->getWidth(),
-                                                 colorSpace,
-                                                 kCGImageAlphaNone
-                                                 );
-    
-    CGImageRef cgImage = CGBitmapContextCreateImage(context);
-    UIImage*   image   = [[UIImage alloc] initWithCGImage:cgImage];
-    
-    CGContextRelease(context);
-    CGColorSpaceRelease(colorSpace);
-    CGImageRelease(cgImage);
-    free(bytes);
-    
-    return image;
-}
-
-//--------------------------------------------------------------------------
-// for debugging
-//--------------------------------------------------------------------------
-- (UIImage*)getImageFromSample:(CMSampleBufferRef)sampleBuffer {
-    CVImageBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
-    CVPixelBufferLockBaseAddress(imageBuffer, 0);
-    
-    size_t bytesPerRow = CVPixelBufferGetBytesPerRow(imageBuffer);
-    size_t width       = CVPixelBufferGetWidth(imageBuffer);
-    size_t height      = CVPixelBufferGetHeight(imageBuffer);
-    
-    uint8_t* baseAddress    = (uint8_t*) CVPixelBufferGetBaseAddress(imageBuffer);
-    int      length         = (int)(height * bytesPerRow);
-    uint8_t* newBaseAddress = (uint8_t*) malloc(length);
-    memcpy(newBaseAddress, baseAddress, length);
-    baseAddress = newBaseAddress;
-    
-    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-    CGContextRef context = CGBitmapContextCreate(
-                                                 baseAddress,
-                                                 width, height, 8, bytesPerRow,
-                                                 colorSpace,
-                                                 kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst
-                                                 );
-    
-    CGImageRef cgImage = CGBitmapContextCreateImage(context);
-    UIImage*   image   = [[UIImage alloc] initWithCGImage:cgImage];
-    
-    CVPixelBufferUnlockBaseAddress(imageBuffer,0);
-    CGContextRelease(context);
-    CGColorSpaceRelease(colorSpace);
-    CGImageRelease(cgImage);
-    
-    free(baseAddress);
-    
-    return image;
-}
-
-//--------------------------------------------------------------------------
-// for debugging
-//--------------------------------------------------------------------------
-- (void)dumpImage:(UIImage*)image {
-    NSLog(@"writing image to library: %dx%d", (int)image.size.width, (int)image.size.height);
-    ALAssetsLibrary* assetsLibrary = [[ALAssetsLibrary alloc] init];
-    [assetsLibrary
-     writeImageToSavedPhotosAlbum:image.CGImage
-     orientation:ALAssetOrientationUp
-     completionBlock:^(NSURL* assetURL, NSError* error){
-         if (error) NSLog(@"   error writing image to library");
-         else       NSLog(@"   wrote image to library %@", assetURL);
-     }
-     ];
+- (NSString*)formatStringFrom:(NSString*)format {
+   if( [format isEqualToString:AVMetadataObjectTypeUPCECode] ) return @"UPC_E";
+   if( [format isEqualToString:AVMetadataObjectTypeCode39Code] ) return @"CODE_39";
+   // if( [format isEqualToString:AVMetadataObjectTypeCode39Mod43Code] ) return @"";
+   if( [format isEqualToString:AVMetadataObjectTypeEAN13Code] ) return @"EAN_13";
+   if( [format isEqualToString:AVMetadataObjectTypeEAN8Code] ) return @"EAN_8";
+   if( [format isEqualToString:AVMetadataObjectTypeCode93Code] ) return @"CODE_93";
+   if( [format isEqualToString:AVMetadataObjectTypeCode128Code] ) return @"CODE_128";
+   // if( [format isEqualToString:AVMetadataObjectTypePDF417Code] ) return @"";
+   if( [format isEqualToString:AVMetadataObjectTypeQRCode] ) return @"QR_CODE";
+   // if( [format isEqualToString:AVMetadataObjectTypeAztecCode] ) return @"";
+   // if( [format isEqualToString:AVMetadataObjectTypeInterleaved2of5Code] ) return @"";
+   if( [format isEqualToString:AVMetadataObjectTypeITF14Code] ) return @"ITF";
+   if( [format isEqualToString:AVMetadataObjectTypeDataMatrixCode] ) return @"DATA_MATRIX";
+   return @"???";
 }
 
 @end
