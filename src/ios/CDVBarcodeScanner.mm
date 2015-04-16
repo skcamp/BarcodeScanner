@@ -390,7 +390,9 @@ parentViewController:(UIViewController*)parentViewController
     } else {
         device = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
         if (!device) return @"unable to obtain video capture device";
-        
+        [device lockForConfiguration:&error];
+        [device setFocusModeLockedWithLensPosition:0.1f completionHandler:^(CMTime time) { } ];
+        [device unlockForConfiguration];
     }
 
     
