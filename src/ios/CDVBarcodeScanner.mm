@@ -427,7 +427,6 @@ parentViewController:(UIViewController*)parentViewController
 
     [output setMetadataObjectsDelegate:self queue:dispatch_get_main_queue()];
     output.metadataObjectTypes = @[
-        AVMetadataObjectTypeCode128Code,
         AVMetadataObjectTypeUPCECode,
         AVMetadataObjectTypeCode39Code,
         AVMetadataObjectTypeEAN13Code,
