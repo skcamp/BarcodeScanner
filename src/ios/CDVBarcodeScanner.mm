@@ -425,15 +425,7 @@ parentViewController:(UIViewController*)parentViewController
 
     [output setMetadataObjectsDelegate:self queue:dispatch_get_main_queue()];
     output.metadataObjectTypes = @[
-        AVMetadataObjectTypeUPCECode,
-        AVMetadataObjectTypeCode39Code,
-        AVMetadataObjectTypeEAN13Code,
-        AVMetadataObjectTypeEAN8Code,
-        AVMetadataObjectTypeCode93Code,
-        AVMetadataObjectTypeCode128Code,
-        AVMetadataObjectTypeQRCode,
-        AVMetadataObjectTypeITF14Code,
-        AVMetadataObjectTypeDataMatrixCode
+        AVMetadataObjectTypeQRCode
     ];
 
     if (![captureSession canSetSessionPreset:AVCaptureSessionPresetMedium]) {
