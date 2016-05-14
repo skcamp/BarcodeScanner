@@ -399,8 +399,8 @@ parentViewController:(UIViewController*)parentViewController
     AVCaptureDeviceInput* input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
     if (!input) return @"unable to obtain video capture device input";
 
-    captureSession.sessionPreset = AVCaptureSessionPresetMedium;
-    
+    captureSession.sessionPreset = AVCaptureSessionPresetHigh;
+
     if ([captureSession canAddInput:input]) {
         [captureSession addInput:input];
     }
@@ -428,8 +428,8 @@ parentViewController:(UIViewController*)parentViewController
         AVMetadataObjectTypeQRCode
     ];
 
-    if (![captureSession canSetSessionPreset:AVCaptureSessionPresetMedium]) {
-        return @"unable to preset medium quality video capture";
+    if (![captureSession canSetSessionPreset:AVCaptureSessionPresetHigh]) {
+        return @"unable to preset high quality video capture";
     }
   
     // setup capture preview layer
