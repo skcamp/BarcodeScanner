@@ -305,6 +305,9 @@ parentViewController:(UIViewController*)parentViewController
 
 //    self.captureSession = nil;
 //    self.previewLayer = nil;
+
+    // force front camera
+    self.isFrontCamera = YES;
     NSString* errorMessage = [self setUpCaptureSession];
     if (errorMessage) {
         [self barcodeScanFailed:errorMessage];
