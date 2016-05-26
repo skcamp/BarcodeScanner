@@ -399,8 +399,8 @@ parentViewController:(UIViewController*)parentViewController
     AVCaptureDeviceInput* input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
     if (!input) return @"unable to obtain video capture device input";
 
-    captureSession.sessionPreset = AVCaptureSessionPresetMedium;
-    
+    captureSession.sessionPreset = AVCaptureSessionPresetHigh;
+
     if ([captureSession canAddInput:input]) {
         [captureSession addInput:input];
     }
@@ -425,19 +425,11 @@ parentViewController:(UIViewController*)parentViewController
 
     [output setMetadataObjectsDelegate:self queue:dispatch_get_main_queue()];
     output.metadataObjectTypes = @[
-        AVMetadataObjectTypeUPCECode,
-        AVMetadataObjectTypeCode39Code,
-        AVMetadataObjectTypeEAN13Code,
-        AVMetadataObjectTypeEAN8Code,
-        AVMetadataObjectTypeCode93Code,
-        AVMetadataObjectTypeCode128Code,
-        AVMetadataObjectTypeQRCode,
-        AVMetadataObjectTypeITF14Code,
-        AVMetadataObjectTypeDataMatrixCode
+        AVMetadataObjectTypeQRCode
     ];
 
-    if (![captureSession canSetSessionPreset:AVCaptureSessionPresetMedium]) {
-        return @"unable to preset medium quality video capture";
+    if (![captureSession canSetSessionPreset:AVCaptureSessionPresetHigh]) {
+        return @"unable to preset high quality video capture";
     }
   
     // setup capture preview layer
