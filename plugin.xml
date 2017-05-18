@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?><plugin xmlns="http://www.phonegap.com/ns/plugins/1.0"
     xmlns:android="http://schemas.android.com/apk/res/android"
-    id="com.phonegap.plugins.barcodescanner"
+    id="phonegap-plugin-barcodescanner"
     version="skc-1.2">
 
     <name>BarcodeScanner</name>
@@ -8,11 +8,11 @@
     <license>MIT</license>
 
     <repo>https://github.com/wildabeast/BarcodeScanner</repo>
-    <issue>https://github.com/wildabeast/BarcodeScanner/issues</issue> 
-    
+    <issue>https://github.com/wildabeast/BarcodeScanner/issues</issue>
+
     <engines>
         <engine name="cordova" version=">=3.0.0" />
-    </engines>    
+    </engines>
 
     <js-module src="www/barcodescanner.js" name="BarcodeScanner">
         <clobbers target="cordova.plugins.barcodeScanner" />
@@ -48,7 +48,7 @@
         <!--
         <source-file src="R.java" target-dir="src/com/google/zxing/client/android" />
         -->
-        
+
         <!--
         <config-file target="res/xml/plugins.xml" parent="/plugins">
             <plugin name="BarcodeScanner" value="com.phonegap.plugins.barcodescanner.BarcodeScanner"/>
@@ -103,7 +103,7 @@
             search: (src/android/LibraryProject/(.+?)/[^/]+)$
             replace: <source-file src="$1" target-dir="$2"/>
         -->
-        
+
         <source-file src="src/android/LibraryProject/res/drawable/launcher_icon.png" target-dir="res/drawable"/>
         <source-file src="src/android/LibraryProject/res/drawable/share_via_barcode.png" target-dir="res/drawable"/>
         <source-file src="src/android/LibraryProject/res/drawable/shopper_icon.png" target-dir="res/drawable"/>
